@@ -91,10 +91,11 @@ class FileHolder  {
     static private Path real( Path path ) {
         try {
             // main reason for this is to resolve symlinks to real file location
-            // hence apply only for default file system
             // note: also for Google Cloud storage path it may convert to relative path
-            // it may return invalid (relative) paths therefore do not apply it
-            return path.getFileSystem() == FileSystems.default ? path.toRealPath() : path
+            // it may return invalid (relative) paths
+            // note: not doing this can cause symlink targets to become inaccessible from
+            // inside containers when running on Google Cloud (see nextflow#4845)
+            return path.toRealPath()
         }
         catch( Exception e ) {
             log.trace "Unable to get real path for: $path"
