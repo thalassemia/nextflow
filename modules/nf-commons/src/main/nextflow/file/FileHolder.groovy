@@ -95,7 +95,9 @@ class FileHolder  {
             // it may return invalid (relative) paths
             // note: not doing this can cause symlink targets to become inaccessible from
             // inside containers when running on Google Cloud (see nextflow#4845)
-            return path.toRealPath()
+            def real_path = path.toRealPath()
+            log.trace "Real path for $path is $real_path"
+            return real_path
         }
         catch( Exception e ) {
             log.trace "Unable to get real path for: $path"
