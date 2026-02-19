@@ -1136,4 +1136,96 @@ class GoogleBatchTaskHandlerTest extends Specification {
         result.getContainer().getOptions() == '--privileged'
     }
 
+    def 'should use hyperdisk-balanced for n4/c4 families with fusion' () {
+        given:
+        def WORK_DIR = CloudStorageFileSystem.forBucket('foo').getPath('/scratch')
+        def CONTAINER_IMAGE = 'debian:latest'
+        def exec = Mock(GoogleBatchExecutor) {
+            getBatchConfig() >> Mock(BatchConfig)
+        }
+        and:
+        def bean = new TaskBean(workDir: WORK_DIR, inputFiles: [:])
+        def task = Mock(TaskRun) {
+            toTaskBean() >> bean
+            getHashLog() >> 'abcd1234'
+            getWorkDir() >> WORK_DIR
+            getContainer() >> CONTAINER_IMAGE
+            getConfig() >> Mock(TaskConfig) {
+                getCpus() >> 4
+                getResourceLabels() >> [:]
+            }
+        }
+        and:
+        def env = [FUSION_WORK: '/xyz']
+        def launcher = new GoogleBatchLauncherSpecMock('bash .command.run', [], [], env)
+        and:
+        def machineType = new GoogleBatchMachineTypeSelector.MachineType(
+            type: 'n4-standard-4',
+            family: 'n4',
+            cpusPerVm: 4,
+            memPerVm: 16
+        )
+        and:
+        def handler = Spy(new GoogleBatchTaskHandler(task, exec)) {
+            fusionEnabled() >> true
+            findBestMachineType(_, true) >> machineType
+        }
+
+        when:
+        def req = handler.newSubmitRequest(task, launcher)
+
+        then:
+        def instancePolicy = req.getAllocationPolicy().getInstances(0).getPolicy()
+        instancePolicy.getMachineType() == 'n4-standard-4'
+        instancePolicy.getDisks(0).getNewDisk().getSizeGb() == 375
+        instancePolicy.getDisks(0).getNewDisk().getType() == 'hyperdisk-balanced'
+        instancePolicy.getBootDisk().getType() == 'hyperdisk-balanced'
+    }
+
+    def 'should use hyperdisk-balanced for c4a families with fusion' () {
+        given:
+        def WORK_DIR = CloudStorageFileSystem.forBucket('foo').getPath('/scratch')
+        def CONTAINER_IMAGE = 'debian:latest'
+        def exec = Mock(GoogleBatchExecutor) {
+            getBatchConfig() >> Mock(BatchConfig)
+        }
+        and:
+        def bean = new TaskBean(workDir: WORK_DIR, inputFiles: [:])
+        def task = Mock(TaskRun) {
+            toTaskBean() >> bean
+            getHashLog() >> 'abcd1234'
+            getWorkDir() >> WORK_DIR
+            getContainer() >> CONTAINER_IMAGE
+            getConfig() >> Mock(TaskConfig) {
+                getCpus() >> 8
+                getResourceLabels() >> [:]
+            }
+        }
+        and:
+        def env = [FUSION_WORK: '/xyz']
+        def launcher = new GoogleBatchLauncherSpecMock('bash .command.run', [], [], env)
+        and:
+        def machineType = new GoogleBatchMachineTypeSelector.MachineType(
+            type: 'c4a-standard-8',
+            family: 'c4a',
+            cpusPerVm: 8,
+            memPerVm: 32
+        )
+        and:
+        def handler = Spy(new GoogleBatchTaskHandler(task, exec)) {
+            fusionEnabled() >> true
+            findBestMachineType(_, true) >> machineType
+        }
+
+        when:
+        def req = handler.newSubmitRequest(task, launcher)
+
+        then:
+        def instancePolicy = req.getAllocationPolicy().getInstances(0).getPolicy()
+        instancePolicy.getMachineType() == 'c4a-standard-8'
+        instancePolicy.getDisks(0).getNewDisk().getSizeGb() == 375
+        instancePolicy.getDisks(0).getNewDisk().getType() == 'hyperdisk-balanced'
+        instancePolicy.getBootDisk().getType() == 'hyperdisk-balanced'
+    }
+
 }

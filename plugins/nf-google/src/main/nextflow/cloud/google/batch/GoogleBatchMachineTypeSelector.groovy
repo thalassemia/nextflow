@@ -83,6 +83,13 @@ class GoogleBatchMachineTypeSelector {
      */
     private static final List<String> ACCELERATOR_OPTIMIZED_FAMILIES = ['a2-*', 'a3-*', 'g2-*']
 
+    /*
+     * Families that require Hyperdisk Balanced instead of local SSD.
+     * These newer generation instances do not support local SSD.
+     * See: https://cloud.google.com/compute/docs/disks/hyperdisks
+     */
+    private static final List<String> HYPERDISK_REQUIRED_FAMILIES = ['n4-*', 'n4a-*', 'n4d-*', 'c4-*', 'c4a-*', 'c4d-*']
+
     @Immutable
     static class MachineType {
         String type
@@ -260,6 +267,10 @@ class GoogleBatchMachineTypeSelector {
             machineType.type.startsWith("a2-ultragpu-") )
             return new MemoryUnit( 0 )
 
+        // Families that require Hyperdisk Balanced do not support local SSD
+        if( requiresHyperdisk(machineType) )
+            return new MemoryUnit( 0 )
+
         // For other special families, the user must provide a valid size. If a family does not
         // support local disks, then Google Batch shall return an appropriate error.
         return requested
@@ -301,6 +312,17 @@ class GoogleBatchMachineTypeSelector {
         // Cloud Info service currently does not currently return gpusPerVm values (or the user
         // could have disabled use of the service) so also check against a known set of families.
         return ACCELERATOR_OPTIMIZED_FAMILIES.any { matchType(it, machineType.type) }
+    }
+
+    /**
+     * Determine whether the machine type requires Hyperdisk Balanced instead of local SSD.
+     * Newer generation instance families (n4, c4, etc.) do not support local SSD.
+     *
+     * @param machineType Machine type
+     * @return Boolean value indicating if Hyperdisk Balanced is required.
+     */
+    boolean requiresHyperdisk(MachineType machineType) {
+        return HYPERDISK_REQUIRED_FAMILIES.any { matchType(it, machineType.type) }
     }
 
 }

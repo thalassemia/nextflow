@@ -112,4 +112,36 @@ class GoogleBatchMachineTypeSelectorTest extends Specification {
         'a3-highgpu-1g' | 0    | true
         'g2-standard-4' | 0    | true
     }
+
+    def 'should know when machine type requires hyperdisk'() {
+        expect:
+        final machineType = new MachineType(type: TYPE, family: FAMILY)
+        GoogleBatchMachineTypeSelector.INSTANCE.requiresHyperdisk(machineType) == EXPECTED
+
+        where:
+        TYPE              | FAMILY | EXPECTED
+        'n2-standard-4'   | 'n2'   | false
+        'c2-standard-8'   | 'c2'   | false
+        'n4-standard-4'   | 'n4'   | true
+        'n4a-standard-8'  | 'n4a'  | true
+        'n4d-standard-16' | 'n4d'  | true
+        'c4-standard-4'   | 'c4'   | true
+        'c4a-standard-8'  | 'c4a'  | true
+        'c4d-standard-16' | 'c4d'  | true
+    }
+
+    def 'should return zero local SSD size for hyperdisk families'() {
+        expect:
+        final machineType = new MachineType(type: TYPE, family: FAMILY, cpusPerVm: CPUS)
+        GoogleBatchMachineTypeSelector.INSTANCE.findValidLocalSSDSize(MemoryUnit.of(REQUESTED), machineType) == MemoryUnit.of(EXPECTED)
+
+        where:
+        REQUESTED | TYPE              | FAMILY | CPUS | EXPECTED
+        '375 GB'  | 'n4-standard-4'   | 'n4'   | 4    | '0'
+        '375 GB'  | 'n4a-standard-8'  | 'n4a'  | 8    | '0'
+        '375 GB'  | 'n4d-standard-16' | 'n4d'  | 16   | '0'
+        '375 GB'  | 'c4-standard-4'   | 'c4'   | 4    | '0'
+        '375 GB'  | 'c4a-standard-8'  | 'c4a'  | 8    | '0'
+        '375 GB'  | 'c4d-standard-16' | 'c4d'  | 16   | '0'
+    }
 }

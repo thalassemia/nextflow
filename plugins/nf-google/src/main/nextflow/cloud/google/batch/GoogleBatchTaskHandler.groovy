@@ -398,9 +398,6 @@ class GoogleBatchTaskHandler extends TaskHandler implements FusionAwareTask {
         else {
             final instancePolicy = AllocationPolicy.InstancePolicy.newBuilder()
 
-            if( batchConfig.getBootDiskImage() )
-                instancePolicy.setBootDisk(AllocationPolicy.Disk.newBuilder().setImage(batchConfig.getBootDiskImage()))
-
             if( fusionEnabled() && !disk ) {
                 disk = new DiskResource(request: '375 GB', type: 'local-ssd')
                 log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - adding local volume as fusion scratch: $disk"
@@ -435,14 +432,32 @@ class GoogleBatchTaskHandler extends TaskHandler implements FusionAwareTask {
             if( disk?.type == 'local-ssd' && machineType ) {
                 final validSize = GoogleBatchMachineTypeSelector.INSTANCE.findValidLocalSSDSize(disk.request, machineType)
                 if( validSize.toBytes() == 0 ) {
-                    disk = new DiskResource(request: 0)
-                    log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - ${machineType.type} does not allow configuring local disks"
+                    // Check if machine type requires hyperdisk-balanced instead of local-ssd
+                    if( GoogleBatchMachineTypeSelector.INSTANCE.requiresHyperdisk(machineType) ) {
+                        disk = new DiskResource(request: disk.request, type: 'hyperdisk-balanced')
+                        log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - ${machineType.type} requires hyperdisk, using hyperdisk-balanced: $disk"
+                    }
+                    else {
+                        disk = new DiskResource(request: 0)
+                        log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - ${machineType.type} does not allow configuring local disks"
+                    }
                 }
-                if( validSize != disk.request ) {
+                else if( validSize != disk.request ) {
                     disk = new DiskResource(request: validSize, type: 'local-ssd')
                     log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - adjusting local disk size to: $validSize"
                 }
             }
+
+            // Configure boot disk - use hyperdisk-balanced for instance types that require it
+            final bootDiskBuilder = AllocationPolicy.Disk.newBuilder()
+            if( batchConfig.getBootDiskImage() )
+                bootDiskBuilder.setImage(batchConfig.getBootDiskImage())
+            if( machineType && GoogleBatchMachineTypeSelector.INSTANCE.requiresHyperdisk(machineType) ) {
+                bootDiskBuilder.setType('hyperdisk-balanced')
+                log.debug "[GOOGLE BATCH] Process `${task.lazyName()}` - ${machineType.type} requires hyperdisk, setting boot disk type to hyperdisk-balanced"
+            }
+            if( batchConfig.getBootDiskImage() || (machineType && GoogleBatchMachineTypeSelector.INSTANCE.requiresHyperdisk(machineType)) )
+                instancePolicy.setBootDisk(bootDiskBuilder)
 
             // use disk directive for an attached disk if type is specified
             if( disk?.type ) {
